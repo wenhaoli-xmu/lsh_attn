@@ -6,7 +6,7 @@ from .utils import block_n_config
 
 @triton.autotune(configs=block_n_config(), key=[])
 @triton.jit
-def d1_u16_kernel(
+def d1_u8_kernel(
     q_ptr, k_ptr, o_ptr,
     stride_kb,
     stride_ob,
@@ -16,7 +16,7 @@ def d1_u16_kernel(
     b_idx, n_idx = tl.program_id(0), tl.program_id(1)
     n_range = n_idx * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    bit_1 = tl.full((1,), value=1, dtype=tl.uint16)
+    bit_1 = tl.full((1,), value=1, dtype=tl.uint8)
 
     # load query hash
     q_data = tl.load(q_ptr + b_idx)
@@ -27,8 +27,8 @@ def d1_u16_kernel(
 
     # attention
     xor_result = ~(q_data ^ k_data)
-    accum = tl.zeros((BLOCK_N,), dtype=tl.int64)
-    for _ in range(16):
+    accum = tl.zeros((BLOCK_N,), dtype=tl.uint8)
+    for _ in range(8):
         accum += xor_result & bit_1
         xor_result = xor_result >> bit_1
 
@@ -37,7 +37,7 @@ def d1_u16_kernel(
     tl.store(o_ptr + o_offs, accum, mask=o_offs < B * N)
 
 
-def lsh_attn_d1_u16(q_hash, k_hash):
+def lsh_attn_d1_u8(q_hash, k_hash):
     batch_size, num_heads, q_len, dim = q_hash.shape
     _, _, k_len, _ = k_hash.shape
 
@@ -56,10 +56,11 @@ def lsh_attn_d1_u16(q_hash, k_hash):
         batch_size * num_heads,
         triton.cdiv(k_len, META['BLOCK_N']))
 
-    d1_u8_kernel[grid](
-        q_hash, k_hash, result,
-        k_hash.stride(0),
-        result.stride(0),
-        k_hash.shape[0], k_hash.shape[1])
+    with torch.cuda.device(q_hash.device):
+        d1_u8_kernel[grid](
+            q_hash, k_hash, result,
+            k_hash.stride(0),
+            result.stride(0),
+            k_hash.shape[0], k_hash.shape[1])
     
     return result.view(batch_size, num_heads, k_len)

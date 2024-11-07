@@ -3,6 +3,7 @@ import triton
 import triton.language as tl
 import torch
 from lsh_kernel import lsh_attn_d1_u8
+from lsh_kernel import pack_dx_u8
 
 
 def lsh_attn(q_hash, k_hash):
@@ -59,6 +60,8 @@ if __name__ == '__main__':
         WallTime.get("sparse-attn(sdpa)").result(postfix=f'-{ctx_length}')
         WallTime.get("lsh-attn(torch)").result(postfix=f'-{ctx_length}')
         WallTime.get("std-attn(sdpa)").result(postfix=f'-{ctx_length}')
+
+        
 
         WallTime.get("lsh-attn(triton)").reset()
         WallTime.get("sparse-attn(sdpa)").reset()

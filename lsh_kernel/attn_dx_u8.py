@@ -15,14 +15,6 @@ def dx_u8_kernel(
     B, N, D: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """
-    Threads
-    -------
-    :param D: 维度开辟 D 个threads
-    :param N: 维度开辟 BLOCK_N 个 threads
-    每个block内开辟 D * BLOCK_N 个 threads
-    """
-
     b_idx, n_idx = tl.program_id(0), tl.program_id(1)
 
     n_range = n_idx * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -50,7 +42,8 @@ def dx_u8_kernel(
     tl.store(o_ptr + o_offs, accum, mask=o_offs < B * N)
 
 
-def dx_u8_kernel(q_hash, k_hash):
+def lsh_attn_dx_u8(q_hash, k_hash):
+
     batch_size, num_heads, q_len, dim = q_hash.shape
     _, _, k_len, _ = k_hash.shape
 
@@ -68,12 +61,13 @@ def dx_u8_kernel(q_hash, k_hash):
         batch_size * num_heads,
         triton.cdiv(k_len, META['BLOCK_N']))
 
-    lsh_attn_kernel[grid](
-        q_hash, k_hash, result,
-        q_hash.stride(0),
-        k_hash.stride(0),
-        k_hash.stride(1),
-        result.stride(0),
-        k_hash.shape[0], k_hash.shape[1], k_hash.shape[2])
+    with torch.cuda.device(q_hash.device):
+        dx_u8_kernel[grid](
+            q_hash, k_hash, result,
+            q_hash.stride(0),
+            k_hash.stride(0),
+            k_hash.stride(1),
+            result.stride(0),
+            k_hash.shape[0], k_hash.shape[1], k_hash.shape[2])
     
     return result.view(batch_size, num_heads, k_len)
