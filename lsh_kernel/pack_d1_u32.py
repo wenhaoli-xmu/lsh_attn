@@ -3,7 +3,7 @@ import triton.language as tl
 import torch
 
 
-TORCH_DTYPE = torch.uint32
+TORCH_DTYPE = torch.int32
 TRITON_DTYPE = tl.uint32
 NUM_BITS = 32
 
